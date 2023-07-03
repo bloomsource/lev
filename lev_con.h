@@ -107,11 +107,11 @@ public:
     void ContinueRecv();
     
     //send data to remote, if failed, you should close connetion
-    bool SendData( const char* msg, size_t msglen );
+    bool SendData( const char* msg, size_t msglen ) override;
     
     //send data to remote, and after message send compelete, 
     //close the connection( call OnLevConClose ).
-    bool SendAndClose( const char* msg, size_t msglen );
+    bool SendAndClose( const char* msg, size_t msglen ) override;
     
 private:
     
@@ -151,9 +151,9 @@ public:
     SSL* GetSsl();
     
 	//if ssl hankshake not compelte, data will store in buffer, after handshake compelte, data is going to send
-    bool SendData( const char* msg, size_t msglen );
+    bool SendData( const char* msg, size_t msglen ) override;
     
-    bool SendAndClose( const char* msg, size_t msglen );
+    bool SendAndClose( const char* msg, size_t msglen ) override;
     
 private:
     
