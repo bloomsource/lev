@@ -1268,9 +1268,8 @@ bool LevSetNonblocking( lev_sock_t fd )
     int           nRet;
     nRet = ioctlsocket( fd, FIONBIO, (unsigned long *) &ul );
     if (nRet == SOCKET_ERROR)
-    {
         return false;
-    }
+    
     return true;
     
 #else
