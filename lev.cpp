@@ -66,7 +66,7 @@ int write_log( const char* fmt, ... );
 #define LEV_MAX_TIMER_ID 100000000
 
 static bool LevLoopRun  = true;
-std::atomic_int  LevInstance;
+std::atomic_int  LevInstance(0);
 
 #define find_timer_buf() ( timer_cnt_ <= LEV_OBJ_BUF_SIZE ? timer_buf_ : ext_timer_buf_ )
 
