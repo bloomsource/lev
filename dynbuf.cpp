@@ -266,7 +266,7 @@ int DynamicBuf::read_msg32( bool net_byte_order, int min_size, int max_size, int
     
     unlock();
     
-    return len - sizeof(int);
+    return len;
 }
 
 int DynamicBuf::read_msg16( bool net_byte_order, int min_size, int max_size, int& cmd, char* msg, bool fetch )
