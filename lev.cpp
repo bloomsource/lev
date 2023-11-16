@@ -463,7 +463,7 @@ void LevEventLoopImpl::proc_fd_events()
                     
                     ctx = it->second;
                     
-                    if( idx != ctx.id )
+                    if( idx != ctx.idx )
                         continue;
 
                     if( ctx.WatchRead )
@@ -480,7 +480,7 @@ void LevEventLoopImpl::proc_fd_events()
                     
                     ctx = it->second;
 
-                    if( idx != ctx.id )
+                    if( idx != ctx.idx )
                         continue;
                         
                     if( ctx.WatchWrite )
