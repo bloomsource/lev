@@ -1,5 +1,6 @@
 #include "dynbuf.h"
 #include <exception>
+#include <stdexcept>
 
 DynamicBuf::DynamicBuf( bool multi_thread, MemPool* pool )
 : pool_self_( multi_thread, sizeof(DynBufBlock) )
