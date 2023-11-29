@@ -36,6 +36,9 @@ public:
     //when async connect ok
     virtual void OnLevConConnectOk(){}
     
+    //when send buffer empty(all data send to tcp stack, send buffer become empty)
+    virtual void OnLevConBufferEmpty(){}
+    
     //when SSL_connect ok
     virtual void OnSSLConnectOk(){}
     
@@ -68,8 +71,13 @@ public:
     //get socket fd
     lev_sock_t GetFd();
     
+    //set event notifier
     void SetNotifier( LevNetEventNotifier* notifier );
     
+    //return the size of data in send buf,
+    //data is buffered in send buffer, not send to tcp stack yet.
+    int DataInBuffer();
+
     //send data to remote, if failed, you should close connetion
     virtual bool SendData( const char* msg, size_t msglen ) = 0;
     
@@ -131,6 +139,8 @@ private:
 
 
 #ifdef LEV_CON_SSL
+
+#define LEV_SSL_INIT_TIMEOUT  3
 
 typedef enum{
     SSL_CLIENT,

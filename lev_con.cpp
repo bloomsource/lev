@@ -56,7 +56,13 @@ void LevNetConnection::SetNotifier( LevNetEventNotifier* notifier )
     if( notifier )
         notify_ = notifier;
 }
-	
+
+int LevNetConnection::DataInBuffer()
+{
+    return snd_buf_.Len();
+}
+
+
 LevTcpConnection::LevTcpConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool, bool connected )
 : LevNetConnection( loop, fd, notifier, pool )
 {
@@ -137,6 +143,8 @@ void LevTcpConnection::ProcWriteEvent()
 
         if( snd_buf_.Len() ) //some data still in buffer
             return;
+
+        notify_->OnLevConBufferEmpty();
 
         loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
 
@@ -249,7 +257,6 @@ bool LevTcpConnection::tcp_err_nonblocking_( int ret )
 
 #ifdef LEV_CON_SSL
 
-#define LEV_SSL_INIT_TIMEOUT  3
 #define LEV_SSL_BLOCK_SIZE    1024
 
 #define LEV_SSL_EVENT_READ  1
@@ -446,6 +453,9 @@ void LevSSLConnection::ProcSslIo( int evt )
             }
         }
     }
+
+    if( snd_buf_.Len() == 0 )
+        notify_->OnLevConBufferEmpty();
 
     if( want_close_ && ( snd_buf_.Len() == 0 ) )
     {
