@@ -144,9 +144,9 @@ void LevTcpConnection::ProcWriteEvent()
         if( snd_buf_.Len() ) //some data still in buffer
             return;
 
-        notify_->OnLevConBufferEmpty();
-
         loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
+
+        notify_->OnLevConBufferEmpty();
 
         if( want_close_ )
         {
@@ -454,7 +454,7 @@ void LevSSLConnection::ProcSslIo( int evt )
         }
     }
 
-    if( snd_buf_.Len() == 0 )
+    if( try_write && snd_buf_.Len() == 0 )
         notify_->OnLevConBufferEmpty();
 
     if( want_close_ && ( snd_buf_.Len() == 0 ) )
