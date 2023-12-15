@@ -200,7 +200,12 @@ bool LevTcpConnection::SendData( const char* msg, size_t msglen )
     {
         if( snd_buf_.Len() == 0 )
         {
-            rc = send( fd_, msg, msglen, 0 );
+#ifdef _WIN32
+            rc = send( fd_, msg, (int)msglen, 0 );
+#else
+            rc = send(fd_, msg, msglen, 0);
+#endif
+
             if( rc <= 0 )
             {
                 if( tcp_err_nonblocking_( rc ))
