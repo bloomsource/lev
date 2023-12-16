@@ -175,7 +175,7 @@ private:
     
     void delete_timer( int id );
     
-    uint64_t calc_sleep_time();
+    uint64_t calc_sleep_time( bool poll );
     
     LevTimerCtx* find_timer( int id );
         
@@ -319,7 +319,7 @@ LevTimerCtx* LevEventLoopImpl::find_timer( int id )
     return NULL;
 }
 
-uint64_t LevEventLoopImpl::calc_sleep_time()
+uint64_t LevEventLoopImpl::calc_sleep_time( bool poll )
 {
     int64_t  diff;
     uint64_t now,sleep_time;
@@ -336,13 +336,20 @@ uint64_t LevEventLoopImpl::calc_sleep_time()
             diff = timer_trig_time_ - now;
             
             if( diff > 0 )
+            {
                 sleep_time = diff > sleep_time_ ? sleep_time_ : diff;
+                if( !poll )
+                    sleep_time = sleep_time % 1000;
+            }
             else
                 sleep_time = 0;
         }
         else
+        {
             sleep_time = sleep_time_;
-        
+            if( !poll )
+                sleep_time = sleep_time % 1000;
+        }
     }
     
     return sleep_time;
@@ -412,7 +419,7 @@ void LevEventLoopImpl::proc_fd_events()
             last_batch = ( batch_idx + batch_size ) >= fd_cnt ? true : false;
             
             if( last_batch )
-                sleep_time = calc_sleep_time();
+                sleep_time = calc_sleep_time( true );
             else
                 sleep_time = 0;
             
@@ -497,7 +504,7 @@ void LevEventLoopImpl::proc_fd_events()
 
 #else //linux, epoll
 
-        sleep_time = calc_sleep_time();
+        sleep_time = calc_sleep_time( true );
         
         rc = epoll_wait( epoll_fd_, events, sizeof(events)/sizeof(struct epoll_event), sleep_time / 1000 );
         if( rc <= 0 )
@@ -620,8 +627,9 @@ void LevEventLoopImpl::Run()
         {
             //epoll_wait wait with milliseconds,
             //so it's possible to sleep after call of epoll_wait
-            sleep_time = calc_sleep_time();
-            usec_sleep( sleep_time );
+            sleep_time = calc_sleep_time( false );
+            if( sleep_time )
+                usec_sleep( sleep_time );
         }
         
         //process timer
