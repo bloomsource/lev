@@ -36,7 +36,7 @@ public:
     //when async connect ok
     virtual void OnLevConConnectOk(){}
     
-    //when send buffer empty(all data send to tcp stack, send buffer become empty)
+    //when send buffer empty(all data in buffer send to tcp stack, send buffer become empty)
     virtual void OnLevConBufferEmpty(){}
     
     //when SSL_connect ok
@@ -51,10 +51,16 @@ public:
     //when SSL_accept failed
     virtual void OnSSLAcceptFail( int ssl_errno ){}
     
-    //SSL_connect/SSL_accept timeout, this is usefull to detect
-    //if a client is hacking the server
-    //( for example , after tcp connection establish, doing nothing )
+    //when SSL_connect/SSL_accept timeout
+    //this is usefull to detect if a client is hacking the server
+    //( after tcp connection establish, doing nothing )
     virtual void OnSSLInitTimeout(){}
+    
+    //when data is write to tcp stack ok
+    //len is how many bytes data is send, bufdata is true means data is from send buffer
+    //  (not directly write to tcp protocl stack when you call LevNetConnection::SendData() )
+    //this function is not called by default, if you want to send this notify, call LevNetConnection::SetNotifyDataSend( true )
+    virtual void OnLevDataSend( int len, bool bufdata ){}
     
 };
 
@@ -74,10 +80,13 @@ public:
     //set event notifier
     void SetNotifier( LevNetEventNotifier* notifier );
     
-    //return the size of data in send buf,
-    //data is buffered in send buffer, not send to tcp stack yet.
+    //return the size of data in send buf
+    //(data is buffered in send buffer, not send to tcp stack yet)
     int DataInBuffer();
-
+    
+    //set if call OnLevDataSend notify function when data is send
+    void SetNotifyDataSend( bool notify );
+    
     //send data to remote, if failed, you should close connetion
     virtual bool SendData( const char* msg, size_t msglen ) = 0;
     
@@ -99,6 +108,8 @@ protected:
     //after message send to remote compelete, 
     //close the connection;
     bool want_close_;
+    
+    bool notify_send_;
     
 };
 

@@ -37,6 +37,8 @@ LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEve
 
     want_close_ = false;
 
+    notify_send_ = false;
+    
     LevSetNonblocking( fd );
     
 }
@@ -62,6 +64,11 @@ int LevNetConnection::DataInBuffer()
     return snd_buf_.Len();
 }
 
+void LevNetConnection::SetNotifyDataSend( bool notify )
+{
+    notify_send_ = notify;
+    
+}
 
 LevTcpConnection::LevTcpConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool, bool connected )
 : LevNetConnection( loop, fd, notifier, pool )
@@ -141,6 +148,9 @@ void LevTcpConnection::ProcWriteEvent()
         
         snd_buf_.Inc( rc );
 
+        if( notify_send_ )
+            notify_->OnLevDataSend( rc, true );
+        
         if( snd_buf_.Len() ) //some data still in buffer
             return;
 
@@ -219,6 +229,8 @@ bool LevTcpConnection::SendData( const char* msg, size_t msglen )
                     return false;
             }
             
+            if( notify_send_ )
+                notify_->OnLevDataSend( rc, false );
             
             //some data not send compelete
             if( rc != (int)msglen )
@@ -434,6 +446,9 @@ void LevSSLConnection::ProcSslIo( int evt )
         if( rc > 0 )
         {
             snd_buf_.Inc( msglen + sizeof(int));
+            
+            if( notify_send_ )
+                notify_->OnLevDataSend( rc, true );
         }
         else
         {
