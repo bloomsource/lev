@@ -56,7 +56,7 @@ public:
     //( after tcp connection establish, doing nothing )
     virtual void OnSSLInitTimeout(){}
     
-    //when data is write to tcp stack ok
+    //when data is write to tcp stack ok, this is usefull on special senario.
     //len is how many bytes data is send, bufdata is true means data is from send buffer
     //  (not directly write to tcp protocl stack when you call LevNetConnection::SendData() )
     //this function is not called by default, if you want to send this notify, call LevNetConnection::SetNotifyDataSend( true )

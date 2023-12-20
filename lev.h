@@ -28,9 +28,9 @@ typedef int    lev_sock_t;
 
 class LevEventLoop;
 
-//socket fd call back function
+//socket fd event callback function
 typedef void (*LevIoCallback)( LevEventLoop* loop, lev_sock_t fd, void* data );
-//timer call back function
+//timer callback function
 typedef void (*LevTimerCallback)( LevEventLoop* loop, int timer_id,  void* data );
 //customer callback function
 typedef void (*LevCustFuncCallback)( LevEventLoop* loop, void* data );
