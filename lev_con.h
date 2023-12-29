@@ -36,9 +36,6 @@ public:
     //when async connect ok
     virtual void OnLevConConnectOk(){}
     
-    //when send buffer empty(all data in buffer send to tcp stack, send buffer become empty)
-    virtual void OnLevConBufferEmpty(){}
-    
     //when SSL_connect ok
     virtual void OnSSLConnectOk(){}
     
@@ -55,11 +52,17 @@ public:
     //this is usefull to detect if a client is hacking the server
     //( after tcp connection establish, doing nothing )
     virtual void OnSSLInitTimeout(){}
+
+    //when send buffer empty(all data in buffer send to tcp stack, send buffer become empty)
+    //this is function is not called by default, 
+    //if you want to send this notify,call LevNetConnection::SetNotifySendBufEmpty( true )
+    virtual void OnLevConBufferEmpty(){}
     
     //when data is write to tcp stack ok, this is usefull on special senario.
     //len is how many bytes data is send, bufdata is true means data is from send buffer
     //  (not directly write to tcp protocl stack when you call LevNetConnection::SendData() )
-    //this function is not called by default, if you want to send this notify, call LevNetConnection::SetNotifyDataSend( true )
+    //this function is not called by default, 
+    //if you want to send this notify, call LevNetConnection::SetNotifyDataSend( true )
     virtual void OnLevDataSend( int len, bool bufdata ){}
     
 };
@@ -82,10 +85,13 @@ public:
     
     //return the size of data in send buf
     //(data is buffered in send buffer, not send to tcp stack yet)
-    int DataInBuffer();
+    virtual int DataInBuffer() = 0;
     
     //set if call OnLevDataSend notify function when data is send
     void SetNotifyDataSend( bool notify );
+    
+    //set if call OnLevConBufferEmpty notify function when send buffer become empty
+    void SetNotifySendBufEmpty( bool notify );
     
     //send data to remote, if failed, you should close connetion
     virtual bool SendData( const char* msg, size_t msglen ) = 0;
@@ -111,6 +117,8 @@ protected:
     
     bool notify_send_;
     
+    bool notify_buf_empty_;
+    
 };
 
 class LevTcpConnection : public LevNetConnection
@@ -124,6 +132,8 @@ public:
     
     void StopRecv();
     void ContinueRecv();
+    
+    int DataInBuffer() override;
     
     //send data to remote, if failed, you should close connetion
     bool SendData( const char* msg, size_t msglen ) override;
@@ -171,6 +181,8 @@ public:
     
     SSL* GetSsl();
     
+    int DataInBuffer() override;
+    
 	//if ssl hankshake not compelte, data will store in buffer, after handshake compelte, data is going to send
     bool SendData( const char* msg, size_t msglen ) override;
     
@@ -194,6 +206,8 @@ private:
     
     bool init_ok_;
 
+    int data_in_buf_;
+    
     int timer_id_;
     
     SSL* ssl_;

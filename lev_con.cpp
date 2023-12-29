@@ -39,6 +39,8 @@ LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEve
 
     notify_send_ = false;
     
+    notify_buf_empty_ = false;
+    
     LevSetNonblocking( fd );
     
 }
@@ -59,16 +61,16 @@ void LevNetConnection::SetNotifier( LevNetEventNotifier* notifier )
         notify_ = notifier;
 }
 
-int LevNetConnection::DataInBuffer()
-{
-    return snd_buf_.Len();
-}
-
 void LevNetConnection::SetNotifyDataSend( bool notify )
 {
     notify_send_ = notify;
-    
 }
+
+void LevNetConnection::SetNotifySendBufEmpty( bool notify )
+{
+    notify_buf_empty_ = notify;
+}
+
 
 LevTcpConnection::LevTcpConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool, bool connected )
 : LevNetConnection( loop, fd, notifier, pool )
@@ -156,7 +158,8 @@ void LevTcpConnection::ProcWriteEvent()
 
         loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
 
-        notify_->OnLevConBufferEmpty();
+        if( notify_buf_empty_ )
+            notify_->OnLevConBufferEmpty();
 
         if( want_close_ )
         {
@@ -184,6 +187,10 @@ int LevTcpConnection::tcp_async_connect_ok_( lev_sock_t fd )
     return 1;
 }
 
+int LevTcpConnection::DataInBuffer()
+{
+    return snd_buf_.Len();
+}
 
 void LevTcpConnection::StopRecv()
 {
@@ -314,6 +321,7 @@ LevSSLConnection::LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd,
     init_ok_  = false;
     timer_id_ = LEV_INVALID_TIMER_ID;
     SSL_set_fd( ssl, (int)fd );
+    data_in_buf_ = 0;
     
     
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevSSLIoReadCB, this );
@@ -447,6 +455,8 @@ void LevSSLConnection::ProcSslIo( int evt )
         {
             snd_buf_.Inc( msglen + sizeof(int));
             
+            data_in_buf_ -= msglen;
+            
             if( notify_send_ )
                 notify_->OnLevDataSend( rc, true );
         }
@@ -474,7 +484,7 @@ void LevSSLConnection::ProcSslIo( int evt )
         }
     }
 
-    if( try_write && snd_buf_.Len() == 0 )
+    if( try_write && snd_buf_.Len() == 0 && notify_buf_empty_ )
         notify_->OnLevConBufferEmpty();
 
     if( want_close_ && ( snd_buf_.Len() == 0 ) )
@@ -531,6 +541,11 @@ void LevSSLConnection::ProcSslIo( int evt )
 }
 
 
+int LevSSLConnection::DataInBuffer()
+{
+    return data_in_buf_;
+}
+
 bool LevSSLConnection::SendData( const char* msg, size_t msglen )
 {
     int left;
@@ -555,6 +570,8 @@ bool LevSSLConnection::SendData( const char* msg, size_t msglen )
         
         if( !snd_buf_.Write( buf, len ) )
             return false;
+        
+        data_in_buf_ += write_len;
         
         left   -= write_len;
         offset += write_len;
