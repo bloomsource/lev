@@ -137,29 +137,29 @@ public:
     
     bool Init();
     
-    void Run();
+    void Run() override;
     
-    void Stop();
+    void Stop() override;
     
-    void SetSleepTime( int miliseoncds );
+    void SetSleepTime( int miliseoncds ) override;
     
-    bool AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb, void* data );
+    bool AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb, void* data ) override;
     
-    bool DeleteIoWatcher( lev_sock_t fd, int event );
+    bool DeleteIoWatcher( lev_sock_t fd, int event ) override;
     
-    bool DeleteIoWatcher( lev_sock_t fd );
+    bool DeleteIoWatcher( lev_sock_t fd ) override;
     
-    bool AddTimerWatcher( double start, double interval, LevTimerCallback cb, void* data, int& id );
+    bool AddTimerWatcher( double start, double interval, LevTimerCallback cb, void* data, int& id ) override;
     
-    bool DeleteTimerWatcher( int id );
+    bool DeleteTimerWatcher( int id ) override;
     
-    bool AddCustFunc( LevCustFuncCallback cb, void* data );
+    bool AddCustFunc( LevCustFuncCallback cb, void* data ) override;
     
-    bool DeleteCustFunc( LevCustFuncCallback cb, void* data );
+    bool DeleteCustFunc( LevCustFuncCallback cb, void* data ) override;
     
-    void Close( lev_sock_t fd );
+    void Close( lev_sock_t fd ) override;
     
-    void CloseAll();
+    void CloseAll() override;
     
 private:
     

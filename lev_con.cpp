@@ -8,24 +8,6 @@
 #include <sys/socket.h>
 #endif
 
-void LevTcpIoReadCB( LevEventLoop* loop, lev_sock_t fd, void* data )
-{
-    LevTcpConnection* con;
-    con = (LevTcpConnection*)data;
-
-    con->ProcReadEvent();
-
-}
-
-void LevTcpIoWriteCB( LevEventLoop* loop, lev_sock_t fd, void* data )
-{
-    LevTcpConnection* con;
-    con = (LevTcpConnection*)data;
-
-    con->ProcWriteEvent();
-
-}
-
 LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool )
 : snd_buf_( false, pool )
 {
@@ -71,6 +53,23 @@ void LevNetConnection::SetNotifySendBufEmpty( bool notify )
     notify_buf_empty_ = notify;
 }
 
+void LevTcpIoReadCB( LevEventLoop* loop, lev_sock_t fd, void* data )
+{
+    LevTcpConnection* con;
+    con = (LevTcpConnection*)data;
+
+    con->ProcReadEvent();
+
+}
+
+void LevTcpIoWriteCB( LevEventLoop* loop, lev_sock_t fd, void* data )
+{
+    LevTcpConnection* con;
+    con = (LevTcpConnection*)data;
+
+    con->ProcWriteEvent();
+
+}
 
 LevTcpConnection::LevTcpConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool, bool connected )
 : LevNetConnection( loop, fd, notifier, pool )
