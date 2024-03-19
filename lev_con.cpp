@@ -8,6 +8,9 @@
 #include <sys/socket.h>
 #endif
 
+static bool tcp_async_connect_ok_( lev_sock_t fd );
+static bool tcp_err_nonblocking_( int ret );
+
 LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool )
 : snd_buf_( false, pool )
 {
@@ -120,14 +123,14 @@ void LevTcpConnection::ProcWriteEvent()
             notify_->OnLevConConnectFail();
             return;
         }
-
-        notify_->OnLevConConnectOk();
-
+        
         loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevTcpIoReadCB, this );
-
+        
         if( snd_buf_.Len() == 0  )
             loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
-
+        
+        notify_->OnLevConConnectOk();
+        
         connected_ = true;
     }
     else
@@ -167,23 +170,6 @@ void LevTcpConnection::ProcWriteEvent()
         }
     }
 
-}
-
-int LevTcpConnection::tcp_async_connect_ok_( lev_sock_t fd )
-{
-    int opt;
-#ifdef _WIN32
-    int len;
-#else
-    socklen_t len;
-#endif
-
-    len = sizeof(opt);
-    getsockopt( fd, SOL_SOCKET, SO_ERROR, (char*)&opt, &len );
-    if( opt ) /* connect to remote server failed */
-        return 0;
-    
-    return 1;
 }
 
 int LevTcpConnection::DataInBuffer()
@@ -266,7 +252,24 @@ bool LevTcpConnection::SendAndClose( const char* msg, size_t msglen )
     
 }
 
-bool LevTcpConnection::tcp_err_nonblocking_( int ret )
+bool tcp_async_connect_ok_( lev_sock_t fd )
+{
+    int opt;
+#ifdef _WIN32
+    int len;
+#else
+    socklen_t len;
+#endif
+
+    len = sizeof(opt);
+    getsockopt( fd, SOL_SOCKET, SO_ERROR, (char*)&opt, &len );
+    if( opt ) /* connect to remote server failed */
+        return false;
+    
+    return true;
+}
+
+bool tcp_err_nonblocking_( int ret )
 {
 #ifdef _WIN32
     if( ret == SOCKET_ERROR && ( WSAGetLastError () ==  WSAEWOULDBLOCK ) )

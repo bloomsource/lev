@@ -150,10 +150,6 @@ private:
     void ProcReadEvent();
     void ProcWriteEvent();
     
-    bool tcp_err_nonblocking_( int ret );
-    
-    int tcp_async_connect_ok_( lev_sock_t fd );
-    
     //already connected, this flag is used to proc tcp async connect
     bool connected_;
 };
