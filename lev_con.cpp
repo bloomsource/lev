@@ -187,7 +187,7 @@ void LevTcpConnection::ContinueRecv()
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevTcpIoReadCB, this );
 }
 
-bool LevTcpConnection::SendData( const char* msg, size_t msglen )
+bool LevTcpConnection::SendData( const void* msg, size_t msglen )
 {
     int rc;
 
@@ -196,7 +196,7 @@ bool LevTcpConnection::SendData( const char* msg, size_t msglen )
     
     if( !connected_ )
     {
-        return snd_buf_.Write( msg, msglen );
+        return snd_buf_.Write( (char*)msg, msglen );
     }
     else
     {
@@ -212,7 +212,7 @@ bool LevTcpConnection::SendData( const char* msg, size_t msglen )
             {
                 if( tcp_err_nonblocking_( rc ))
                 {
-                    if( !snd_buf_.Write( msg, msglen ) )
+                    if( !snd_buf_.Write( (char*)msg, msglen ) )
                         return false;
                     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevTcpIoWriteCB, this );
                     return true;
@@ -227,23 +227,23 @@ bool LevTcpConnection::SendData( const char* msg, size_t msglen )
             //some data not send compelete
             if( rc != (int)msglen )
             {
-                if( !snd_buf_.Write( msg+ rc, msglen - rc ) )
+                if( !snd_buf_.Write( (char*)msg+ rc, msglen - rc ) )
                     return false;
                 loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevTcpIoWriteCB, this );
             }
         }
         else
         {
-            if( !snd_buf_.Write( msg, msglen ) )
+            if( !snd_buf_.Write( (char*)msg, msglen ) )
                 return false;
         }
         return true;
     }
 }
 
-bool LevTcpConnection::SendAndClose( const char* msg, size_t msglen )
+bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
 {
-    if( !snd_buf_.Write( msg, msglen ) )
+    if( !snd_buf_.Write( (char*)msg, msglen ) )
         return false;
     want_close_ = true;
 
@@ -548,7 +548,7 @@ int LevSSLConnection::DataInBuffer()
     return data_in_buf_;
 }
 
-bool LevSSLConnection::SendData( const char* msg, size_t msglen )
+bool LevSSLConnection::SendData( const void* msg, size_t msglen )
 {
     int left;
     int write_len;
@@ -568,7 +568,7 @@ bool LevSSLConnection::SendData( const char* msg, size_t msglen )
         len = write_len + sizeof(int);
         
         memcpy( buf, &len, sizeof(int) );
-        memcpy( buf + sizeof(int), msg + offset, write_len );
+        memcpy( buf + sizeof(int), (char*)msg + offset, write_len );
         
         if( !snd_buf_.Write( buf, len ) )
             return false;
@@ -585,7 +585,7 @@ bool LevSSLConnection::SendData( const char* msg, size_t msglen )
     return true;
 }
 
-bool LevSSLConnection::SendAndClose( const char* msg, size_t msglen )
+bool LevSSLConnection::SendAndClose( const void* msg, size_t msglen )
 {
     if( !SendData( msg, msglen ) )
         return false;

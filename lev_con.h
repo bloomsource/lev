@@ -94,11 +94,11 @@ public:
     void SetNotifySendBufEmpty( bool notify );
     
     //send data to remote, if failed, you should close connetion
-    virtual bool SendData( const char* msg, size_t msglen ) = 0;
+    virtual bool SendData( const void* msg, size_t msglen ) = 0;
     
     //send data to remote, and after message send compelete, 
     //close the connection( call OnLevConClose ).
-    virtual bool SendAndClose( const char* msg, size_t msglen ) = 0;
+    virtual bool SendAndClose( const void* msg, size_t msglen ) = 0;
     
 
 protected:
@@ -136,11 +136,11 @@ public:
     int DataInBuffer() override;
     
     //send data to remote, if failed, you should close connetion
-    bool SendData( const char* msg, size_t msglen ) override;
+    bool SendData( const void* msg, size_t msglen ) override;
     
     //send data to remote, and after message send compelete, 
     //close the connection( call OnLevConClose ).
-    bool SendAndClose( const char* msg, size_t msglen ) override;
+    bool SendAndClose( const void* msg, size_t msglen ) override;
     
 private:
     
@@ -180,9 +180,9 @@ public:
     int DataInBuffer() override;
     
 	//if ssl hankshake not compelte, data will store in buffer, after handshake compelte, data is going to send
-    bool SendData( const char* msg, size_t msglen ) override;
+    bool SendData( const void* msg, size_t msglen ) override;
     
-    bool SendAndClose( const char* msg, size_t msglen ) override;
+    bool SendAndClose( const void* msg, size_t msglen ) override;
     
 private:
     
