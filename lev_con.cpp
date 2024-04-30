@@ -196,7 +196,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
     
     if( !connected_ )
     {
-        return snd_buf_.Write( (char*)msg, msglen );
+        return snd_buf_.Write( msg, msglen );
     }
     else
     {
@@ -212,7 +212,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
             {
                 if( tcp_err_nonblocking_( rc ))
                 {
-                    if( !snd_buf_.Write( (char*)msg, msglen ) )
+                    if( !snd_buf_.Write( msg, msglen ) )
                         return false;
                     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevTcpIoWriteCB, this );
                     return true;
@@ -234,7 +234,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
         }
         else
         {
-            if( !snd_buf_.Write( (char*)msg, msglen ) )
+            if( !snd_buf_.Write( msg, msglen ) )
                 return false;
         }
         return true;
@@ -243,7 +243,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
 
 bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
 {
-    if( !snd_buf_.Write( (char*)msg, msglen ) )
+    if( !snd_buf_.Write( msg, msglen ) )
         return false;
     want_close_ = true;
 

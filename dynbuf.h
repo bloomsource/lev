@@ -85,14 +85,14 @@ public:
     /*
     write data to dynbuf
     
-    buf  - data to write to buf
+    data - data to write to buf
     size - length of data
     
     return:
     true  - ok
     false - failed
     */
-    bool Write( const char* buf, size_t size );
+    bool Write( const void* data, size_t size );
     
     /*
     dynbuf fetch msg function

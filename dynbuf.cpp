@@ -98,7 +98,7 @@ bool DynamicBuf::Peek( char* buf, int size, int& actual )
 }
 
 
-bool DynamicBuf::Write( const char* buf, size_t size )
+bool DynamicBuf::Write( const void* data, size_t size )
 {
     int blk_inc = 0;
     int size_inc;
@@ -112,7 +112,7 @@ bool DynamicBuf::Write( const char* buf, size_t size )
     
     if( free_size >= (int)size )
     {
-        write_from_block( tail_, buf, (int)size, end );
+        write_from_block( tail_, (char*)data, (int)size, end );
         tail_ = end;
         unlock();
         return true;
@@ -141,7 +141,7 @@ bool DynamicBuf::Write( const char* buf, size_t size )
         blk = free_size ? tail_ : blk;
     }
     
-    write_from_block( blk, buf, (int)size, end );
+    write_from_block( blk, (char*)data, (int)size, end );
     
     tail_ = end;
     blk_cnt_ += blk_inc;
