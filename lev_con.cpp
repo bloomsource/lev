@@ -583,8 +583,17 @@ bool LevSSLConnection::SendData( const void* msg, size_t msglen )
                     if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
                         return false;
                     
-                    if( !Store2SendBuf( (char*)msg+offset, left ) )
+                    if( !Store2SendBuf( (char*)msg+offset, write_len ) )
                         return false;
+                    
+                    left   -= write_len;
+                    offset += write_len;
+                    
+                    if( left )
+                    {
+                        if( !Store2SendBuf( (char*)msg+offset, left ) )
+                            return false;
+                    }
                     
                     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
                     return true;
@@ -618,6 +627,8 @@ bool LevSSLConnection::SendAndClose( const void* msg, size_t msglen )
         return false;
     
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
+    
+    want_close_ = true;
     
     return true;
 }
