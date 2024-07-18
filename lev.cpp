@@ -59,6 +59,7 @@ int write_log( const char* fmt, ... );
 
 #define LEV_OBJ_BUF_SIZE   100
 #define LEV_CUST_FUNC_SIZE 10
+#define LEV_CUST_TASK_SIZE 100
 
 #define LEV_MAX_WAIT_TIME 1000000   //1 second
 
@@ -157,6 +158,8 @@ public:
     
     bool DeleteCustFunc( LevCustFuncCallback cb, void* data ) override;
     
+    bool AddCustTask( LevCustFuncCallback cb, void* data ) override;
+    
     void Close( lev_sock_t fd ) override;
     
     void CloseAll() override;
@@ -170,6 +173,8 @@ private:
     void proc_fd_events();
     
     void proc_cust_func();
+    
+    void proc_cust_task();
     
     void proc_timer_events();
     
@@ -199,11 +204,15 @@ private:
     
     int cust_func_cnt_;
     
+    int cust_task_cnt_;
+    
     LevTimerCtx* ext_timer_buf_;
     
     LevTimerCtx  timer_buf_[LEV_OBJ_BUF_SIZE];
     
     LevCustFuncCtx cust_func_[LEV_CUST_FUNC_SIZE];
+    
+    LevCustFuncCtx cust_task_[LEV_CUST_TASK_SIZE];
     
     std::map<lev_sock_t, LevIoCtx> fd_table_;
     
@@ -233,6 +242,8 @@ LevEventLoopImpl::LevEventLoopImpl( bool low_latency )
     ext_timer_buf_      = NULL;
     
     cust_func_cnt_ = 0;
+    cust_task_cnt_ = 0;
+    
     memset( cust_func_, 0, sizeof(cust_func_) );
     
 }
@@ -498,6 +509,8 @@ void LevEventLoopImpl::proc_fd_events()
             batch_idx += batch_size;
         }
         
+        proc_cust_task();
+        
         if( !event_trig )
             break;
         
@@ -569,8 +582,9 @@ void LevEventLoopImpl::proc_fd_events()
                     ctx.WriteCB( this, fd, ctx.WriteData );
             }
         }
+        proc_cust_task();
 #endif
-
+        
         if( !LevLoopRun )
             break;
     }
@@ -594,6 +608,28 @@ void LevEventLoopImpl::proc_cust_func()
         if( cb )
             cb( this, data );
     }
+    
+}
+
+void LevEventLoopImpl::proc_cust_task()
+{
+    int i;
+    LevCustFuncCallback cb;
+    void* data;
+    
+    if( !cust_task_cnt_ )
+        return;
+    
+    for( i = 0; i < cust_task_cnt_; i++ )
+    {
+        cb   = cust_task_[i].cb;
+        data = cust_task_[i].data;
+        if( cb )
+            cb( this, data );
+    }
+    
+    cust_task_cnt_ = 0;
+    
     
 }
 
@@ -622,6 +658,8 @@ void LevEventLoopImpl::Run()
         if( cust_func_cnt_ )
             proc_cust_func();
         
+        proc_cust_task();
+        
         //sleep only on high latency mode
         if( !low_latency_ )
         {
@@ -634,6 +672,7 @@ void LevEventLoopImpl::Run()
         
         //process timer
         proc_timer_events();
+        proc_cust_task();
         
     }
     
@@ -1071,6 +1110,23 @@ bool LevEventLoopImpl::AddCustFunc( LevCustFuncCallback cb, void* data )
     cust_func_[cust_func_cnt_].data = data;
     
     cust_func_cnt_++;
+    
+    return true;
+}
+
+bool LevEventLoopImpl::AddCustTask( LevCustFuncCallback cb, void* data )
+{
+    
+    if( cb == NULL )
+        return false;
+    
+    if( cust_task_cnt_ == LEV_CUST_TASK_SIZE )
+        return false;
+    
+    cust_task_[cust_task_cnt_].cb   = cb;
+    cust_task_[cust_task_cnt_].data = data;
+    
+    cust_task_cnt_++;
     
     return true;
 }

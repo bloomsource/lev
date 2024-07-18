@@ -198,8 +198,6 @@ private:
     
     void ProcSslIo( int evt );
     
-    bool Store2SendBuf( const void* data, size_t len );
-    
     LevSSLConnetionType type_;
     
     bool init_ok_;

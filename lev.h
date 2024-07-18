@@ -84,6 +84,9 @@ public:
     //delete a customer call back function
     virtual bool DeleteCustFunc( LevCustFuncCallback cb, void* data ) = 0;
     
+    //add a new task, task function will only execute once and auto deleted
+    virtual bool AddCustTask( LevCustFuncCallback cb, void* data ) = 0;
+    
     //delete socket fd from watch list, and close the socket.
     //note:
     //this function equal to first call DeleteIoWatcher( fd ) , then call close(fd)/closesocket(fd)

@@ -102,13 +102,20 @@ void LevTcpConnection::ProcReadEvent()
     rc = recv( fd_, buf, sizeof(buf), 0 );
     if( rc <= 0 )
     {
+        loop_->DeleteIoWatcher( fd_ );
         notify_->OnLevConClose( 0 );
         return ;
     }
 
     fatal = false;
     if( !want_close_)
+    {
         notify_->OnLevConMsgRecv( buf, rc, fatal );
+        if( fatal )
+            loop_->DeleteIoWatcher( fd_ );
+        
+    }
+    
 }
 
 void LevTcpConnection::ProcWriteEvent()
@@ -146,6 +153,7 @@ void LevTcpConnection::ProcWriteEvent()
         rc = send( fd_, buf, msglen, 0 );
         if( rc <= 0 )
         {
+            loop_->DeleteIoWatcher( fd_ );
             notify_->OnLevConClose( 0 );
             return ;
         }
@@ -162,9 +170,12 @@ void LevTcpConnection::ProcWriteEvent()
 
         if( notify_buf_empty_ )
             notify_->OnLevConBufferEmpty();
+        
+            
 
         if( want_close_ )
         {
+            loop_->DeleteIoWatcher( fd_ );
             notify_->OnLevConClose( 0 );
             return ;
         }
@@ -375,6 +386,7 @@ void LevSSLConnection::ProcInitTimeout()
 {
 
     timer_id_ = LEV_INVALID_TIMER_ID;
+    loop_->DeleteIoWatcher( fd_ );
     notify_->OnSSLInitTimeout();
 
 }
@@ -401,6 +413,7 @@ void LevSSLConnection::ProcSslInit()
         else
             loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
         
+        
         if( type_ == SSL_CLIENT )
             notify_->OnSSLConnectOk();
         else
@@ -414,7 +427,9 @@ void LevSSLConnection::ProcSslInit()
             
             loop_->DeleteTimerWatcher( timer_id_ );
             timer_id_ = LEV_INVALID_TIMER_ID;
-                    
+
+            loop_->DeleteIoWatcher( fd_ );
+            
             if( type_ == SSL_CLIENT )
                 notify_->OnSSLConnectFail( err );
             else
@@ -467,6 +482,7 @@ void LevSSLConnection::ProcSslIo( int evt )
             err = SSL_get_error( ssl_, rc );
             if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
             {
+                loop_->DeleteIoWatcher( fd_ );
                 notify_->OnLevConClose( err );
                 return;
             }
@@ -487,10 +503,15 @@ void LevSSLConnection::ProcSslIo( int evt )
     }
 
     if( try_write && snd_buf_.Len() == 0 && notify_buf_empty_ )
+    {
         notify_->OnLevConBufferEmpty();
+    }
+    
+        
 
     if( want_close_ && ( snd_buf_.Len() == 0 ) )
     {
+        loop_->DeleteIoWatcher( fd_ );
         notify_->OnLevConClose( 0 );
         return;
     }
@@ -511,7 +532,10 @@ void LevSSLConnection::ProcSslIo( int evt )
                 //fatal is useed to detect if some thing fatal happened in call back function.
                 //if fatal happend, usually the connection should closed.
                 if( fatal )
+                {
+                    loop_->DeleteIoWatcher( fd_ );
                     return;
+                }
             }
         }
         else
@@ -519,6 +543,7 @@ void LevSSLConnection::ProcSslIo( int evt )
             err = SSL_get_error( ssl_, rc );
             if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
             {
+                loop_->DeleteIoWatcher( fd_ );
                 notify_->OnLevConClose( err );
                 return;
             }
@@ -533,8 +558,8 @@ void LevSSLConnection::ProcSslIo( int evt )
     }
 
     if( want_read )
-        (void)want_read;//this line is useless, only to disable warning.
-    
+        (void)want_read;
+
     if( want_write || snd_buf_.Len() )
         loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
     else
@@ -552,97 +577,15 @@ bool LevSSLConnection::SendData( const void* msg, size_t msglen )
 {
     int left;
     int write_len;
-    int offset;
-    int err;
-	int rc;
-    
-    left = (int)msglen;
-    offset = 0;
-
-    if( want_close_ )
-        return true;
-    
-    if( init_ok_ )
-    {
-        if( !snd_buf_.Len() )
-        {
-            while( left )
-            {
-                write_len = left < LEV_SSL_BLOCK_SIZE ? left : LEV_SSL_BLOCK_SIZE;
-                rc = SSL_write( ssl_, (char*)msg+offset, write_len );
-                if( rc > 0 )
-                {
-                    left   -= write_len;
-                    offset += write_len;
-                    if( notify_send_ )
-                        notify_->OnLevDataSend( rc, false );
-                }
-                else
-                {
-                    err = SSL_get_error( ssl_, rc );
-                    if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
-                        return false;
-                    
-                    if( !Store2SendBuf( (char*)msg+offset, write_len ) )
-                        return false;
-                    
-                    left   -= write_len;
-                    offset += write_len;
-                    
-                    if( left )
-                    {
-                        if( !Store2SendBuf( (char*)msg+offset, left ) )
-                            return false;
-                    }
-                    
-                    loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
-                    return true;
-                }
-            }
-        }
-        else
-        {
-            if( !Store2SendBuf( (char*)msg, msglen ) )
-                return false;
-            
-            loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
-        }
-    }
-    else
-    {
-        if( !Store2SendBuf( (char*)msg, msglen ) )
-            return false;
-    }
-    
-    
-    return true;
-}
-
-bool LevSSLConnection::SendAndClose( const void* msg, size_t msglen )
-{
-    if( want_close_ )
-        return true;
-    
-    if( !Store2SendBuf( msg, msglen ) )
-        return false;
-    
-    loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
-    
-    want_close_ = true;
-    
-    return true;
-}
-
-bool LevSSLConnection::Store2SendBuf( const void* data, size_t msglen )
-{
-    int left;
-    int write_len;
     int len;
     int offset;
     char buf[LEV_SSL_BLOCK_SIZE+sizeof(int)];
     
     left = (int)msglen;
     offset = 0;
+
+    if( want_close_ )
+        return true;
     
     while( left )
     {
@@ -650,7 +593,7 @@ bool LevSSLConnection::Store2SendBuf( const void* data, size_t msglen )
         len = write_len + sizeof(int);
         
         memcpy( buf, &len, sizeof(int) );
-        memcpy( buf + sizeof(int), (char*)data + offset, write_len );
+        memcpy( buf + sizeof(int), (char*)msg + offset, write_len );
         
         if( !snd_buf_.Write( buf, len ) )
             return false;
@@ -661,7 +604,21 @@ bool LevSSLConnection::Store2SendBuf( const void* data, size_t msglen )
         offset += write_len;
     }
     
+    if( init_ok_ )
+        loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
+    
     return true;
 }
+
+bool LevSSLConnection::SendAndClose( const void* msg, size_t msglen )
+{
+    if( !SendData( msg, msglen ) )
+        return false;
+
+    want_close_ = true;
+    
+    return true;
+}
+
 
 #endif
