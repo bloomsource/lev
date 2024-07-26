@@ -83,6 +83,9 @@ public:
     //set event notifier
     void SetNotifier( LevNetEventNotifier* notifier );
     
+    //stop event loop, delete fd from watcher
+    void Stop();
+    
     //return the size of data in send buf
     //(data is buffered in send buffer, not send to tcp stack yet)
     virtual int DataInBuffer() = 0;

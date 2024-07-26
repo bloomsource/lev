@@ -613,14 +613,16 @@ void LevEventLoopImpl::proc_cust_func()
 
 void LevEventLoopImpl::proc_cust_task()
 {
-    int i;
+    int i,cnt;
     LevCustFuncCallback cb;
     void* data;
     
     if( !cust_task_cnt_ )
         return;
     
-    for( i = 0; i < cust_task_cnt_; i++ )
+    cnt = cust_task_cnt_;
+    
+    for( i = 0; i < cnt; i++ )
     {
         cb   = cust_task_[i].cb;
         data = cust_task_[i].data;
@@ -1230,9 +1232,13 @@ bool LevInitEnvironment()
     
 #ifdef _WIN32
     
+    static bool init = false;
     WORD wVersionRequested;
     WSADATA wsaData;
     int err;
+    
+    if( init )
+        return true;
     
     wVersionRequested = MAKEWORD( 2, 2 );
     err = WSAStartup( wVersionRequested, &wsaData );
@@ -1243,6 +1249,8 @@ bool LevInitEnvironment()
     }
     
     SetConsoleCtrlHandler( HandlerRoutine, true );
+    
+    init = true;
     
 #endif
     
@@ -1359,8 +1367,8 @@ bool LevSetNonblocking( lev_sock_t fd )
 void usec2tmv( uint64_t usec, struct timeval &tmv )
 {
     
-    tmv.tv_sec  = (int)(usec / 1000000);
-    tmv.tv_usec = (int)(usec % 1000000);
+    tmv.tv_sec  = usec / 1000000;
+    tmv.tv_usec = usec % 1000000;
 }
 #endif
 

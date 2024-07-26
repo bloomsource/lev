@@ -8,8 +8,8 @@
 #include <sys/socket.h>
 #endif
 
-static bool tcp_async_connect_ok_( lev_sock_t fd );
-static bool tcp_err_nonblocking_( int ret );
+static bool tcp_async_connect_ok( lev_sock_t fd );
+static bool tcp_err_nonblocking( int ret );
 
 LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool )
 : snd_buf_( false, pool )
@@ -44,6 +44,11 @@ void LevNetConnection::SetNotifier( LevNetEventNotifier* notifier )
 {
     if( notifier )
         notify_ = notifier;
+}
+
+void LevNetConnection::Stop()
+{
+    loop_->DeleteIoWatcher( fd_ );
 }
 
 void LevNetConnection::SetNotifyDataSend( bool notify )
@@ -102,7 +107,7 @@ void LevTcpConnection::ProcReadEvent()
     rc = recv( fd_, buf, sizeof(buf), 0 );
     if( rc <= 0 )
     {
-        loop_->DeleteIoWatcher( fd_ );
+        Stop();
         notify_->OnLevConClose( 0 );
         return ;
     }
@@ -112,7 +117,7 @@ void LevTcpConnection::ProcReadEvent()
     {
         notify_->OnLevConMsgRecv( buf, rc, fatal );
         if( fatal )
-            loop_->DeleteIoWatcher( fd_ );
+            Stop();
         
     }
     
@@ -125,7 +130,7 @@ void LevTcpConnection::ProcWriteEvent()
 
     if( !connected_ )
     {
-        if( !tcp_async_connect_ok_( fd_ ) ) //async connect to remote failed
+        if( !tcp_async_connect_ok( fd_ ) ) //async connect to remote failed
         {
             notify_->OnLevConConnectFail();
             return;
@@ -153,7 +158,7 @@ void LevTcpConnection::ProcWriteEvent()
         rc = send( fd_, buf, msglen, 0 );
         if( rc <= 0 )
         {
-            loop_->DeleteIoWatcher( fd_ );
+            Stop();
             notify_->OnLevConClose( 0 );
             return ;
         }
@@ -171,11 +176,10 @@ void LevTcpConnection::ProcWriteEvent()
         if( notify_buf_empty_ )
             notify_->OnLevConBufferEmpty();
         
-            
 
         if( want_close_ )
         {
-            loop_->DeleteIoWatcher( fd_ );
+            Stop();
             notify_->OnLevConClose( 0 );
             return ;
         }
@@ -221,7 +225,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
 
             if( rc <= 0 )
             {
-                if( tcp_err_nonblocking_( rc ) )
+                if( tcp_err_nonblocking( rc ) )
                 {
                     if( !snd_buf_.Write( msg, msglen ) )
                         return false;
@@ -254,16 +258,21 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
 
 bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
 {
+    if( want_close_ )
+        return true;
+    
     if( !snd_buf_.Write( msg, msglen ) )
         return false;
+    
     want_close_ = true;
 
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevTcpIoWriteCB, this );
+    
     return true;
     
 }
 
-bool tcp_async_connect_ok_( lev_sock_t fd )
+bool tcp_async_connect_ok( lev_sock_t fd )
 {
     int opt;
 #ifdef _WIN32
@@ -280,7 +289,7 @@ bool tcp_async_connect_ok_( lev_sock_t fd )
     return true;
 }
 
-bool tcp_err_nonblocking_( int ret )
+bool tcp_err_nonblocking( int ret )
 {
 #ifdef _WIN32
     if( ret == SOCKET_ERROR && ( WSAGetLastError () ==  WSAEWOULDBLOCK ) )
@@ -386,7 +395,7 @@ void LevSSLConnection::ProcInitTimeout()
 {
 
     timer_id_ = LEV_INVALID_TIMER_ID;
-    loop_->DeleteIoWatcher( fd_ );
+    Stop();
     notify_->OnSSLInitTimeout();
 
 }
@@ -428,7 +437,7 @@ void LevSSLConnection::ProcSslInit()
             loop_->DeleteTimerWatcher( timer_id_ );
             timer_id_ = LEV_INVALID_TIMER_ID;
 
-            loop_->DeleteIoWatcher( fd_ );
+            Stop();
             
             if( type_ == SSL_CLIENT )
                 notify_->OnSSLConnectFail( err );
@@ -482,7 +491,7 @@ void LevSSLConnection::ProcSslIo( int evt )
             err = SSL_get_error( ssl_, rc );
             if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
             {
-                loop_->DeleteIoWatcher( fd_ );
+                Stop();
                 notify_->OnLevConClose( err );
                 return;
             }
@@ -511,7 +520,7 @@ void LevSSLConnection::ProcSslIo( int evt )
 
     if( want_close_ && ( snd_buf_.Len() == 0 ) )
     {
-        loop_->DeleteIoWatcher( fd_ );
+        Stop();
         notify_->OnLevConClose( 0 );
         return;
     }
@@ -533,7 +542,7 @@ void LevSSLConnection::ProcSslIo( int evt )
                 //if fatal happend, usually the connection should closed.
                 if( fatal )
                 {
-                    loop_->DeleteIoWatcher( fd_ );
+                    Stop();
                     return;
                 }
             }
@@ -543,7 +552,7 @@ void LevSSLConnection::ProcSslIo( int evt )
             err = SSL_get_error( ssl_, rc );
             if( err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE )
             {
-                loop_->DeleteIoWatcher( fd_ );
+                Stop();
                 notify_->OnLevConClose( err );
                 return;
             }
@@ -612,6 +621,9 @@ bool LevSSLConnection::SendData( const void* msg, size_t msglen )
 
 bool LevSSLConnection::SendAndClose( const void* msg, size_t msglen )
 {
+    if( want_close_ )
+        return true;
+    
     if( !SendData( msg, msglen ) )
         return false;
 

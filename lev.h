@@ -61,7 +61,7 @@ public:
     //note:
     //1.event should be LEV_IO_EVENT_READ or LEV_IO_EVENT_WRITE
     //2.if a socket fd is watch both read and write event, 
-    //when you delete read event , write event still in watch.
+    //after you delete read event , write event still in watch.
     virtual bool DeleteIoWatcher( lev_sock_t fd, int event ) = 0;
     
     //delete a sock fd from watch list, both read and read event.
