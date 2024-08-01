@@ -1367,8 +1367,8 @@ bool LevSetNonblocking( lev_sock_t fd )
 void usec2tmv( uint64_t usec, struct timeval &tmv )
 {
     
-    tmv.tv_sec  = usec / 1000000;
-    tmv.tv_usec = usec % 1000000;
+    tmv.tv_sec  = (int)(usec / 1000000);
+    tmv.tv_usec = (int)(usec % 1000000);
 }
 #endif
 
