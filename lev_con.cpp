@@ -141,9 +141,10 @@ void LevTcpConnection::ProcWriteEvent()
         if( snd_buf_.Len() == 0  )
             loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
         
-        notify_->OnLevConConnectOk();
-        
         connected_ = true;
+        
+        notify_->OnLevConConnectOk();
+
     }
     else
     {
