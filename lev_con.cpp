@@ -128,25 +128,7 @@ void LevTcpConnection::ProcWriteEvent()
     char buf[1024];
     int msglen, rc;
 
-    if( !connected_ )
-    {
-        if( !tcp_async_connect_ok( fd_ ) ) //async connect to remote failed
-        {
-            notify_->OnLevConConnectFail();
-            return;
-        }
-        
-        loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevTcpIoReadCB, this );
-        
-        if( snd_buf_.Len() == 0  )
-            loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
-        
-        connected_ = true;
-        
-        notify_->OnLevConConnectOk();
-
-    }
-    else
+    if( connected_ )
     {
         if( snd_buf_.Len() == 0 )
         {
@@ -184,6 +166,24 @@ void LevTcpConnection::ProcWriteEvent()
             notify_->OnLevConClose( 0 );
             return ;
         }
+    }
+    else
+    {
+        if( !tcp_async_connect_ok( fd_ ) ) //async connect to remote failed
+        {
+            notify_->OnLevConConnectFail();
+            return;
+        }
+        
+        loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevTcpIoReadCB, this );
+        
+        if( snd_buf_.Len() == 0  )
+            loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_WRITE );
+        
+        connected_ = true;
+        
+        notify_->OnLevConConnectOk();
+
     }
 
 }
