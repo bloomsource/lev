@@ -166,25 +166,25 @@ public:
     
 private:
     
-    void load_fds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] );
+    void LoadFds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] );
     
-    bool add_new_timer( LevTimerCtx ctx);
+    bool AddNewTimer( LevTimerCtx ctx);
     
-    void proc_fd_events();
+    void ProcFdEvents();
     
-    void proc_cust_func();
+    void ProcCustFunc();
     
-    void proc_cust_task();
+    void ProcCustTask();
     
-    void proc_timer_events();
+    void ProcTimerEvents();
     
-    void delete_timer( int id );
+    void DeleteTimer( int id );
     
-    uint64_t calc_sleep_time( bool poll );
+    uint64_t CalcSleepTime( bool poll );
     
-    LevTimerCtx* find_timer( int id );
+    LevTimerCtx* FindTimer( int id );
         
-    int new_timer_id();
+    int NewTimerID();
     
     int timer_id_;
     
@@ -265,7 +265,7 @@ LevEventLoopImpl::~LevEventLoopImpl()
     
 }
 
-void LevEventLoopImpl::load_fds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] )
+void LevEventLoopImpl::LoadFds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] )
 {
     int idx = 0;
     int cnt = 0;
@@ -311,7 +311,7 @@ bool LevEventLoopImpl::Init()
     return true;
 }
 
-LevTimerCtx* LevEventLoopImpl::find_timer( int id )
+LevTimerCtx* LevEventLoopImpl::FindTimer( int id )
 {
     int i;
     LevTimerCtx *pt;
@@ -330,7 +330,7 @@ LevTimerCtx* LevEventLoopImpl::find_timer( int id )
     return NULL;
 }
 
-uint64_t LevEventLoopImpl::calc_sleep_time( bool poll )
+uint64_t LevEventLoopImpl::CalcSleepTime( bool poll )
 {
     int64_t  diff;
     uint64_t now,sleep_time;
@@ -366,7 +366,7 @@ uint64_t LevEventLoopImpl::calc_sleep_time( bool poll )
     return sleep_time;
 }
 
-int LevEventLoopImpl::new_timer_id()
+int LevEventLoopImpl::NewTimerID()
 {
     int id;
     LevTimerCtx *pt;
@@ -378,7 +378,7 @@ int LevEventLoopImpl::new_timer_id()
         if( timer_id_ > LEV_MAX_TIMER_ID )
             timer_id_ = LEV_MIN_TIMER_ID;
         
-        pt = find_timer( id );
+        pt = FindTimer( id );
         if( !pt )
             break;
     }
@@ -386,7 +386,7 @@ int LevEventLoopImpl::new_timer_id()
     return id;
 }
 
-void LevEventLoopImpl::proc_fd_events()
+void LevEventLoopImpl::ProcFdEvents()
 {
     int i, rc, cnt;
     uint32_t idx;
@@ -430,7 +430,7 @@ void LevEventLoopImpl::proc_fd_events()
             last_batch = ( batch_idx + batch_size ) >= fd_cnt ? true : false;
             
             if( last_batch )
-                sleep_time = calc_sleep_time( true );
+                sleep_time = CalcSleepTime( true );
             else
                 sleep_time = 0;
             
@@ -438,7 +438,7 @@ void LevEventLoopImpl::proc_fd_events()
             FD_ZERO( &write_set );
             
             cnt = batch_size;
-			load_fds(batch_idx, batch_idx + batch_size, fd_list, ctx_list);
+			LoadFds(batch_idx, batch_idx + batch_size, fd_list, ctx_list);
 
 
             for( i = 0; i < cnt ; i++ )
@@ -509,7 +509,7 @@ void LevEventLoopImpl::proc_fd_events()
             batch_idx += batch_size;
         }
         
-        proc_cust_task();
+        ProcCustTask();
         
         if( !event_trig )
             break;
@@ -517,7 +517,7 @@ void LevEventLoopImpl::proc_fd_events()
 
 #else //linux, epoll
 
-        sleep_time = calc_sleep_time( true );
+        sleep_time = CalcSleepTime( true );
         
         rc = epoll_wait( epoll_fd_, events, sizeof(events)/sizeof(struct epoll_event), sleep_time / 1000 );
         if( rc <= 0 )
@@ -582,7 +582,7 @@ void LevEventLoopImpl::proc_fd_events()
                     ctx.WriteCB( this, fd, ctx.WriteData );
             }
         }
-        proc_cust_task();
+        ProcCustTask();
 #endif
         
         if( !LevLoopRun )
@@ -591,7 +591,7 @@ void LevEventLoopImpl::proc_fd_events()
         
 }
 
-void LevEventLoopImpl::proc_cust_func()
+void LevEventLoopImpl::ProcCustFunc()
 {
     int i,cnt;
     LevCustFuncCallback cb;
@@ -611,7 +611,7 @@ void LevEventLoopImpl::proc_cust_func()
     
 }
 
-void LevEventLoopImpl::proc_cust_task()
+void LevEventLoopImpl::ProcCustTask()
 {
     int i,cnt;
     LevCustFuncCallback cb;
@@ -654,27 +654,27 @@ void LevEventLoopImpl::Run()
         }
         
         //process fd io events
-        proc_fd_events();
+        ProcFdEvents();
         
         //process customer functions
         if( cust_func_cnt_ )
-            proc_cust_func();
+            ProcCustFunc();
         
-        proc_cust_task();
+        ProcCustTask();
         
         //sleep only on high latency mode
         if( !low_latency_ )
         {
             //epoll_wait wait with milliseconds,
             //so it's possible to sleep after call of epoll_wait
-            sleep_time = calc_sleep_time( false );
+            sleep_time = CalcSleepTime( false );
             if( sleep_time )
                 usec_sleep( sleep_time );
         }
         
         //process timer
-        proc_timer_events();
-        proc_cust_task();
+        ProcTimerEvents();
+        ProcCustTask();
         
     }
     
@@ -682,7 +682,7 @@ void LevEventLoopImpl::Run()
     
 }
 
-void LevEventLoopImpl::proc_timer_events()
+void LevEventLoopImpl::ProcTimerEvents()
 {
     int id;
     uint64_t now;
@@ -711,7 +711,7 @@ void LevEventLoopImpl::proc_timer_events()
         
         if( ctx->Interval == 0 ) //timer Interval is 0, only trig once
         {
-            delete_timer( id );
+            DeleteTimer( id );
         }
         else
         {
@@ -728,7 +728,7 @@ void LevEventLoopImpl::Stop()
     run_ = false;
 }
 
-bool LevEventLoopImpl::add_new_timer( LevTimerCtx ctx )
+bool LevEventLoopImpl::AddNewTimer( LevTimerCtx ctx )
 {
     LevTimerCtx *pt;
     
@@ -1056,14 +1056,14 @@ bool LevEventLoopImpl::AddTimerWatcher( double start, double interval, LevTimerC
     
     now = usec_now();
     
-    id = new_timer_id();
+    id = NewTimerID();
     ctx.TimerID  = id;
     ctx.TrigTime = now + (uint64_t)(start * 1000000 );
     ctx.Interval = (uint64_t)(interval * 1000000);
     ctx.TimerCB  = cb;
     ctx.Data     = data;
     
-    if( !add_new_timer( ctx ) )
+    if( !AddNewTimer( ctx ) )
         return false;
     
     pt = find_timer_buf();
@@ -1082,12 +1082,12 @@ bool LevEventLoopImpl::DeleteTimerWatcher( int id )
     if( timer_cnt_ == 0 )
         return false;
         
-    ctx = find_timer( id );
+    ctx = FindTimer( id );
         
     if( !ctx )
         return false;
     
-    delete_timer( id );
+    DeleteTimer( id );
     
     return true;
 }
@@ -1373,7 +1373,7 @@ void usec2tmv( uint64_t usec, struct timeval &tmv )
 #endif
 
     
-void LevEventLoopImpl::delete_timer( int id )
+void LevEventLoopImpl::DeleteTimer( int id )
 {
     int i, idx;
     LevTimerCtx *pt, *base;
