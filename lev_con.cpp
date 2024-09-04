@@ -511,15 +511,11 @@ void LevSSLConnection::ProcSslIo( int evt )
             }
         }
     }
-
-    if( try_write && snd_buf_.Len() == 0 && notify_buf_empty_ )
-    {
-        notify_->OnLevConBufferEmpty();
-    }
     
-        
-
-    if( want_close_ && ( snd_buf_.Len() == 0 ) )
+    if( try_write && notify_buf_empty_ && !snd_buf_.Len() )
+        notify_->OnLevConBufferEmpty();
+    
+    if( want_close_ && !snd_buf_.Len() )
     {
         Stop();
         notify_->OnLevConClose( 0 );

@@ -17,8 +17,10 @@ any bug or questions, mail to whotnt@126.com
 
 #ifdef _WIN32
 typedef SOCKET lev_sock_t;
-#else
+#elif defined( __linux__ )
 typedef int    lev_sock_t;
+#else
+#error unsupported system
 #endif
 
 #define LEV_INVALID_TIMER_ID          (-1)
