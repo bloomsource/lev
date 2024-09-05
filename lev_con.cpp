@@ -113,13 +113,10 @@ void LevTcpConnection::ProcReadEvent()
     }
 
     fatal = false;
-    if( !want_close_)
-    {
-        notify_->OnLevConMsgRecv( buf, rc, fatal );
-        if( fatal )
-            Stop();
-        
-    }
+    
+    notify_->OnLevConMsgRecv( buf, rc, fatal );
+    if( fatal )
+        Stop();
     
 }
 
@@ -268,6 +265,7 @@ bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
     want_close_ = true;
 
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevTcpIoWriteCB, this );
+    loop_->DeleteIoWatcher( fd_, LEV_IO_EVENT_READ );
     
     return true;
     
