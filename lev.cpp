@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <atomic>
 #include <map>
+#include <list>
 #include "lev.h"
 
 
@@ -204,17 +205,17 @@ private:
     
     int cust_func_cnt_;
     
-    int cust_task_cnt_;
-    
     LevTimerCtx* ext_timer_buf_;
+    
+    std::map<lev_sock_t, LevIoCtx> fd_table_;
+    
+    std::list<LevCustFuncCtx> cust_task_;
     
     LevTimerCtx  timer_buf_[LEV_OBJ_BUF_SIZE];
     
     LevCustFuncCtx cust_func_[LEV_CUST_FUNC_SIZE];
     
-    LevCustFuncCtx cust_task_[LEV_CUST_TASK_SIZE];
     
-    std::map<lev_sock_t, LevIoCtx> fd_table_;
     
 };
 
@@ -242,9 +243,6 @@ LevEventLoopImpl::LevEventLoopImpl( bool low_latency )
     ext_timer_buf_      = NULL;
     
     cust_func_cnt_ = 0;
-    cust_task_cnt_ = 0;
-    
-    memset( cust_func_, 0, sizeof(cust_func_) );
     
 }
 
@@ -254,7 +252,7 @@ LevEventLoopImpl::~LevEventLoopImpl()
     if( ext_timer_buf_ )
         free( ext_timer_buf_ );
     
-#ifndef _WIN32
+#ifdef __linux__
 
     if( epoll_fd_ != -1 )
     {
@@ -297,7 +295,7 @@ void LevEventLoopImpl::SetSleepTime( int miliseoncds )
 bool LevEventLoopImpl::Init()
 {
     
-#ifndef _WIN32
+#ifdef __linux__
     
     epoll_fd_ = epoll_create( 100 );
     if( epoll_fd_ == -1 )
@@ -613,24 +611,20 @@ void LevEventLoopImpl::ProcCustFunc()
 
 void LevEventLoopImpl::ProcCustTask()
 {
-    int i,cnt;
+    LevCustFuncCtx task;
     LevCustFuncCallback cb;
-    void* data;
     
-    if( !cust_task_cnt_ )
-        return;
-    
-    cnt = cust_task_cnt_;
-    
-    for( i = 0; i < cnt; i++ )
+    while( cust_task_.size() )
     {
-        cb   = cust_task_[i].cb;
-        data = cust_task_[i].data;
+        auto it = cust_task_.begin();
+        task = *it;
+        
+        cb = task.cb;
         if( cb )
-            cb( this, data );
+            cb( this, task.data );
+        
+        cust_task_.pop_front();
     }
-    
-    cust_task_cnt_ = 0;
     
     
 }
@@ -1118,17 +1112,15 @@ bool LevEventLoopImpl::AddCustFunc( LevCustFuncCallback cb, void* data )
 
 bool LevEventLoopImpl::AddCustTask( LevCustFuncCallback cb, void* data )
 {
-    
+    LevCustFuncCtx task;
     if( cb == NULL )
         return false;
     
-    if( cust_task_cnt_ == LEV_CUST_TASK_SIZE )
-        return false;
+    task.cb = cb;
+    task.data = data;
     
-    cust_task_[cust_task_cnt_].cb   = cb;
-    cust_task_[cust_task_cnt_].data = data;
-    
-    cust_task_cnt_++;
+    cust_task_.push_back( task );
+
     
     return true;
 }
