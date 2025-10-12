@@ -7,8 +7,9 @@
 #include <time.h>
 #include <errno.h>
 #include <atomic>
-#include <map>
+#include <vector>
 #include <list>
+#include <map>
 #include "lev.h"
 
 
@@ -27,37 +28,11 @@
 #pragma comment( lib, "ws2_32" )
 #endif
 
-//#define LEV_PERF_TEST 1
+
+
 //#define LEV_CHECK_VALID_FD  1
 
-
-#ifdef LEV_PERF_TEST
-inline struct timespec nsec_now()
-{
-    struct timespec tms;
-    
-#ifdef _WIN32
-    timespec_get( &tms, TIME_UTC );
-#else
-    clock_gettime( CLOCK_REALTIME, &tms );
-#endif
-
-    return tms;
-}
-
-inline uint64_t nsec_diff( struct timespec t1, struct timespec t2 )
-{
-    return ((uint64_t)( t2.tv_sec - t1.tv_sec ))* 1000000000 + ( t2.tv_nsec - t1.tv_nsec );
-}
-
-uint64_t total_time_spend;
-int      total_times;
-int write_log( const char* fmt, ... );
-#endif
-
-
-
-
+#define LEV_EPOLL_EVT_SIZE 10
 #define LEV_OBJ_BUF_SIZE   100
 #define LEV_CUST_FUNC_SIZE 10
 #define LEV_CUST_TASK_SIZE 100
@@ -73,12 +48,15 @@ std::atomic_int  LevInstance(0);
 #define find_timer_buf() ( timer_cnt_ <= LEV_OBJ_BUF_SIZE ? timer_buf_ : ext_timer_buf_ )
 
 typedef struct FdCtx{
-    lev_sock_t fd;
-    uint32_t idx;
+    int ctx_idx;   //ctx idx in vector
+    uint32_t idx;  //fd version idx
 }FdCtx;
 
 typedef struct LevIoCtx{
     
+    int flag;
+    
+    lev_sock_t fd;
     uint32_t idx;
     
     int WatchRead;
@@ -114,18 +92,18 @@ typedef struct LevCustFuncCtx{
     
 }LevCustFuncCtx;
 
-static int comp_timer( const void* data1, const void* data2 );
+static int CompTimer( const void* data1, const void* data2 );
 
-static uint64_t usec_now();
+static uint64_t UsecNow();
 
-static void usec_sleep( uint64_t usec );
+static void UsecSleep( uint64_t usec );
 
 #ifdef LEV_CHECK_VALID_FD
-static bool is_valid_fd( lev_sock_t fd );
+static bool IsValidFd( lev_sock_t fd );
 #endif
 
 #ifdef _WIN32
-static void usec2tmv( uint64_t usec, struct timeval &tmv );
+static void Usec2Tmv( uint64_t usec, struct timeval &tmv );
 #endif
 
 
@@ -167,7 +145,9 @@ public:
     
 private:
     
-    void LoadFds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] );
+    void LoadFds( int start_idx, int end_idx, FdCtx fd_list[], LevIoCtx ctx_list[] );
+    
+    int  FindFreePos();
     
     bool AddNewTimer( LevTimerCtx ctx);
     
@@ -207,15 +187,15 @@ private:
     
     LevTimerCtx* ext_timer_buf_;
     
-    std::map<lev_sock_t, LevIoCtx> fd_table_;
+    std::map<lev_sock_t, int> fd_map_; //map of fd/ctx_idx(ctx_vec_)
+    
+    std::vector<LevIoCtx> ctx_vec_;
     
     std::list<LevCustFuncCtx> cust_task_;
     
     LevTimerCtx  timer_buf_[LEV_OBJ_BUF_SIZE];
     
     LevCustFuncCtx cust_func_[LEV_CUST_FUNC_SIZE];
-    
-    
     
 };
 
@@ -263,32 +243,48 @@ LevEventLoopImpl::~LevEventLoopImpl()
     
 }
 
-void LevEventLoopImpl::LoadFds( int start_idx, int end_idx, lev_sock_t fd_list[], LevIoCtx ctx_list[] )
+void LevEventLoopImpl::LoadFds( int start_idx, int end_idx, FdCtx fd_list[], LevIoCtx ctx_list[] )
 {
     int idx = 0;
     int cnt = 0;
     
-    for( auto it = fd_table_.begin(); it != fd_table_.end(); it++ )
+    for( auto it = fd_map_.begin(); it != fd_map_.end(); it++ )
     {
         if( idx >= start_idx && idx <= end_idx )
         {
-            fd_list[idx]  = it->first;
-            ctx_list[idx] = it->second;
+            fd_list[cnt].ctx_idx = it->second;
+            ctx_list[cnt] = ctx_vec_[it->second];
             
-            idx++;
+            fd_list[cnt].idx = ctx_list[cnt].idx;
+            
             cnt++;
         }
+        
+        idx++;
     }
-    
     
 }
 
-void LevEventLoopImpl::SetSleepTime( int miliseoncds )
+int LevEventLoopImpl::FindFreePos()
 {
-    if( miliseoncds <= 0 || miliseoncds > LEV_MAX_WAIT_TIME/1000 )
+    int i;
+    
+    for( i = 0; i < (int)ctx_vec_.size(); i++ )
+    {
+        LevIoCtx& ctx = ctx_vec_[i];
+        if( ctx.flag == 0 )
+            return i;
+    }
+    
+    return -1;
+}
+
+void LevEventLoopImpl::SetSleepTime( int miliseconds )
+{
+    if( miliseconds <= 0 || miliseconds > LEV_MAX_WAIT_TIME/1000 )
         return ;
     
-    sleep_time_ = miliseoncds * 1000;
+    sleep_time_ = miliseconds * 1000;
     
 }
 
@@ -339,7 +335,7 @@ uint64_t LevEventLoopImpl::CalcSleepTime( bool poll )
     }
     else
     {
-        now = usec_now();
+        now = UsecNow();
         if( timer_trig_time_ )
         {
             diff = timer_trig_time_ - now;
@@ -387,7 +383,7 @@ int LevEventLoopImpl::NewTimerID()
 void LevEventLoopImpl::ProcFdEvents()
 {
     int i, rc, cnt;
-    uint32_t idx;
+    uint32_t idx,ctx_idx;
     lev_sock_t fd;
     
     uint64_t sleep_time;
@@ -399,19 +395,18 @@ void LevEventLoopImpl::ProcFdEvents()
     int batch_size;
     bool last_batch;
     FdCtx fds[FD_SETSIZE];
-	lev_sock_t fd_list[FD_SETSIZE];
-	LevIoCtx   ctx_list[FD_SETSIZE];
-    FD_SET read_set;
-    FD_SET write_set;
+	LevIoCtx ctx_list[FD_SETSIZE];
+    FD_SET rd_set;
+    FD_SET wr_set;
     struct timeval tmv;
     bool event_trig;
 #else
 	FdCtx fdctx;
-    struct epoll_event events[10];
+    struct epoll_event events[LEV_EPOLL_EVT_SIZE];
 #endif
     
     
-    while( fd_table_.size() )
+    while( fd_map_.size() )
     {
         
 #ifdef _WIN32
@@ -420,46 +415,45 @@ void LevEventLoopImpl::ProcFdEvents()
         
         batch_idx = 0;
         
-        fd_cnt = (int)fd_table_.size();
-        
-        while( batch_idx < fd_cnt )
+        while( batch_idx < ( fd_cnt = (int)fd_map_.size() ) )
         {
             batch_size = ( fd_cnt - batch_idx ) > FD_SETSIZE ? FD_SETSIZE : ( fd_cnt - batch_idx );
             last_batch = ( batch_idx + batch_size ) >= fd_cnt ? true : false;
             
             if( last_batch )
-                sleep_time = CalcSleepTime( true );
+            {
+                if( event_trig )
+                    sleep_time = 0;
+                else
+                    sleep_time = CalcSleepTime( true );
+            }
             else
                 sleep_time = 0;
             
-            FD_ZERO( &read_set );
-            FD_ZERO( &write_set );
+            FD_ZERO( &rd_set );
+            FD_ZERO( &wr_set );
             
             cnt = batch_size;
-			LoadFds(batch_idx, batch_idx + batch_size, fd_list, ctx_list);
-
-
+			LoadFds(batch_idx, batch_idx + batch_size -1, fds, ctx_list);
+            batch_idx += batch_size;
+            
             for( i = 0; i < cnt ; i++ )
             {
-				fds[i].fd = fd_list[i];
-				fds[i].idx = ctx_list[i].idx;
 				ctx = ctx_list[i];
-                    
+                fd  = ctx.fd;
+                
                 if( ctx.WatchRead )
-                    FD_SET( fds[i].fd, &read_set );
+                    FD_SET( fd, &rd_set );
                 
                 if(ctx.WatchWrite )
-                    FD_SET( fds[i].fd, &write_set );
+                    FD_SET( fd, &wr_set );
             }
             
-            usec2tmv( sleep_time, tmv );
+            Usec2Tmv( sleep_time, tmv );
             
-            rc = select( 0, &read_set, &write_set, NULL, &tmv );
+            rc = select( 0, &rd_set, &wr_set, NULL, &tmv );
             if( rc <= 0 )
-            {
-                batch_idx += batch_size;
                 continue;
-            }
             
             event_trig = true;
             
@@ -467,44 +461,41 @@ void LevEventLoopImpl::ProcFdEvents()
             
             for( i = 0; i < cnt; i++ )
             {
-                fd  = fds[i].fd;
-                idx = fds[i].idx;
+                ctx     = ctx_list[i];
+                idx     = ctx.idx;
+                fd      = ctx.fd;
+                ctx_idx = fds[i].ctx_idx;
                 
-                if( FD_ISSET( fd, &read_set ) )
+                if( FD_ISSET( fd, &rd_set ) )
                 {
-                    auto it = fd_table_.find( fd );
+                    ctx = ctx_vec_[ctx_idx];
                     
-                    if( it == fd_table_.end() )
+                    if( !ctx.flag )
                         continue;
                     
-                    ctx = it->second;
-                    
-                    if( idx != ctx.idx )
+                    if( ctx.idx != idx )
                         continue;
-
+                    
                     if( ctx.WatchRead )
                         ctx.ReadCB( this, fd, ctx.ReadData );
                 }
                 
-                if( FD_ISSET( fd, &write_set ) )
+                //it's possible fd watcher already delete on read event call back,
+                //so it's need to check if fd in watch list.
+                if( FD_ISSET( fd, &wr_set ) )
                 {
+                    ctx = ctx_vec_[ctx_idx];
                     
-                    auto it = fd_table_.find( fd );
-                    
-                    if( it == fd_table_.end() )
+                    if( !ctx.flag )
                         continue;
                     
-                    ctx = it->second;
-
-                    if( idx != ctx.idx )
+                    if( ctx.idx != idx )
                         continue;
-                        
+                    
                     if( ctx.WatchWrite )
                         ctx.WriteCB( this, fd, ctx.WriteData );
                 }
             }
-            
-            batch_idx += batch_size;
         }
         
         ProcCustTask();
@@ -512,50 +503,33 @@ void LevEventLoopImpl::ProcFdEvents()
         if( !event_trig )
             break;
         
-
 #else //linux, epoll
-
+        
         sleep_time = CalcSleepTime( true );
         
-        rc = epoll_wait( epoll_fd_, events, sizeof(events)/sizeof(struct epoll_event), sleep_time / 1000 );
+        rc = epoll_wait( epoll_fd_, events, LEV_EPOLL_EVT_SIZE, sleep_time / 1000 );
         if( rc <= 0 )
             break;
-
+        
         cnt = rc;
         
         for( i = 0; i < cnt; i++ )
         {
             memcpy( &fdctx, &events[i].data, sizeof(fdctx) );
             
-            fd  = fdctx.fd;
-            idx = fdctx.idx;
+            idx     = fdctx.idx;
+            ctx_idx = fdctx.ctx_idx;
+            
             
             if( events[i].events & EPOLLIN )
             {
-
-#ifdef LEV_PERF_TEST
-                auto t1 = nsec_now();
-#endif
-                auto it = fd_table_.find( fd );
-
-#ifdef LEV_PERF_TEST
-                auto t2 = nsec_now();
-                uint64_t diff = nsec_diff( t1, t2 );
-                total_time_spend += diff;
-                total_times++;
-                if( total_times % 100 == 0 )
-                {
-                    write_log( "100 loop time spend: %" PRIu64 " nanoseconds!", total_time_spend );
-                    total_time_spend = 0;
-                    total_times = 0;
-                }
-#endif
-                if( it == fd_table_.end() )
+                ctx = ctx_vec_[ctx_idx];
+                fd  = ctx.fd;
+                
+                if( !ctx.flag )
                     continue;
                 
-                ctx = it->second;
-                    
-                if( idx != ctx.idx )
+                if( ctx.idx != idx )
                     continue;
                 
                 if( ctx.WatchRead )
@@ -566,27 +540,27 @@ void LevEventLoopImpl::ProcFdEvents()
             //so it's need to check if fd in watch list.
             if( events[i].events & EPOLLOUT )
             {
-                auto it = fd_table_.find( fd );
+                ctx = ctx_vec_[ctx_idx];
+                fd  = ctx.fd;
                 
-                if( it == fd_table_.end() )
+                if( !ctx.flag )
                     continue;
                 
-                ctx = it->second;
-                
-                if( idx != ctx.idx )
+                if( ctx.idx != idx )
                     continue;
                 
                 if( ctx.WatchWrite )
                     ctx.WriteCB( this, fd, ctx.WriteData );
             }
         }
+        
         ProcCustTask();
 #endif
         
         if( !LevLoopRun )
             break;
     }
-        
+    
 }
 
 void LevEventLoopImpl::ProcCustFunc()
@@ -626,7 +600,6 @@ void LevEventLoopImpl::ProcCustTask()
         cust_task_.pop_front();
     }
     
-    
 }
 
 void LevEventLoopImpl::Run()
@@ -639,11 +612,11 @@ void LevEventLoopImpl::Run()
 
     while( LevLoopRun && run_ )
     {
-        fd_cnt = (int)fd_table_.size();
+        fd_cnt = (int)fd_map_.size();
         
         if( fd_cnt + timer_cnt_ + cust_func_cnt_ == 0 )
         {
-            usec_sleep( LEV_MAX_WAIT_TIME );
+            UsecSleep( LEV_MAX_WAIT_TIME );
             continue;
         }
         
@@ -663,7 +636,7 @@ void LevEventLoopImpl::Run()
             //so it's possible to sleep after call of epoll_wait
             sleep_time = CalcSleepTime( false );
             if( sleep_time )
-                usec_sleep( sleep_time );
+                UsecSleep( sleep_time );
         }
         
         //process timer
@@ -685,7 +658,7 @@ void LevEventLoopImpl::ProcTimerEvents()
     while( timer_cnt_ )
     {
         
-        now = usec_now();
+        now = UsecNow();
         
         if( now < timer_trig_time_ )
             break;
@@ -710,7 +683,7 @@ void LevEventLoopImpl::ProcTimerEvents()
         else
         {
             ctx->TrigTime += ctx->Interval;
-            qsort( ctx, timer_cnt_, sizeof(LevTimerCtx), comp_timer );
+            qsort( ctx, timer_cnt_, sizeof(LevTimerCtx), CompTimer );
             timer_trig_time_ = ctx->TrigTime;
         }
     }
@@ -767,7 +740,7 @@ bool LevEventLoopImpl::AddNewTimer( LevTimerCtx ctx )
     pt[timer_cnt_] = ctx;
     timer_cnt_++;
     
-    qsort( pt, timer_cnt_, sizeof(LevTimerCtx), comp_timer );
+    qsort( pt, timer_cnt_, sizeof(LevTimerCtx), CompTimer );
     
     return true;
 }
@@ -776,8 +749,8 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
 {
     
     LevIoCtx ctx;
-    
-#ifndef _WIN32
+    int ctx_idx;
+#ifdef __linux__
     int rc;
     struct epoll_event evt;
 	FdCtx fdctx;
@@ -796,20 +769,11 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
             return false;
     }
 
-#ifdef LEV_CHECK_VALID_FD
-
-    if( !is_valid_fd( fd ) )
+    auto it = fd_map_.find( fd );
+    if( it != fd_map_.end() )
     {
-        fd_table_.erase( fd );
-        return false;
-    }
-        
-#endif
-
-    auto it = fd_table_.find( fd );
-    if( it != fd_table_.end() )
-    {
-        ctx = it->second;
+        ctx_idx = it->second;
+        ctx = ctx_vec_[ctx_idx];
         
         if( event == LEV_IO_EVENT_READ )
         {
@@ -831,9 +795,9 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
             ctx.WriteData  = data;
         }
 
-#ifndef _WIN32
+#ifdef __linux__
         
-        fdctx.fd  = fd;
+        fdctx.ctx_idx  = ctx_idx;
         fdctx.idx = ctx.idx;
         memcpy( &evt.data, &fdctx, sizeof(fdctx) );
         
@@ -854,13 +818,29 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
         }
 
 #endif
-        fd_table_[fd] = ctx;
+        ctx_vec_[ctx_idx] = ctx;
         
     }
     else
     {
         memset( &ctx, 0, sizeof(ctx) );
+        ctx_idx = FindFreePos();
+        if( ctx_idx == -1 )
+        {
+            try{
+                ctx_vec_.push_back( ctx );
+            }
+            catch(...)
+            {
+                return false;
+            }
+            
+            ctx_idx = (int)ctx_vec_.size() - 1;
+            
+        }
         
+        ctx.flag = 1;
+        ctx.fd   = fd;
         ctx.idx  = fd_idx_++;
         
         if( event == LEV_IO_EVENT_READ )
@@ -877,9 +857,12 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
             ctx.WriteData  = data;
         }
         
-#ifndef _WIN32
+        fd_map_[fd] = ctx_idx;
+        ctx_vec_[ctx_idx] = ctx;
+        
+#ifdef __linux__
 
-        fdctx.fd  = fd;
+        fdctx.ctx_idx  = ctx_idx;
         fdctx.idx = ctx.idx;
         
         memcpy( &evt.data, &fdctx, sizeof(fdctx) );
@@ -891,16 +874,14 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
             
         if( ctx.WatchWrite )
             evt.events = evt.events | EPOLLOUT;
-#endif
-        fd_table_[fd] = ctx;
-
-#ifndef _WIN32
         
         rc = epoll_ctl( epoll_fd_, EPOLL_CTL_ADD, fd, &evt );
         if( rc == -1 )
         {
             //write_log( "[WRN] epoll op failed! line: %d, fd: %d, errno: %d err: %s", __LINE__, fd, errno, strerror( errno ) );
-            fd_table_.erase( fd );
+            fd_map_.erase( fd );
+            ctx.flag = 0;
+            ctx_vec_[ctx_idx] = ctx;
             return false;
         }
         
@@ -914,8 +895,8 @@ bool LevEventLoopImpl::AddIoWatcher( lev_sock_t fd, int event, LevIoCallback cb,
 bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd, int event )
 {
     LevIoCtx ctx;
-    
-#ifndef _WIN32
+    int ctx_idx;
+#ifdef __linux__
     int rc, op;
     FdCtx fdctx;
     struct epoll_event evt;
@@ -931,18 +912,19 @@ bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd, int event )
             return false;
     }
     
-    auto it = fd_table_.find( fd );
+    auto it = fd_map_.find( fd );
     
-    if( it == fd_table_.end() )
+    if( it == fd_map_.end() )
         return false;
 
-    ctx = it->second;
+    ctx_idx = it->second;
+    ctx = ctx_vec_[ctx_idx];
     
 #ifdef LEV_CHECK_VALID_FD
 
-    if( !is_valid_fd( fd ) )
+    if( !IsValidFd( fd ) )
     {
-        fd_table_.erase( fd );
+        fd_map_.erase( fd );
         return false;
     }
         
@@ -965,7 +947,7 @@ bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd, int event )
     }
     
         
-#ifndef _WIN32
+#ifdef __linux__
     
     evt.events = 0;
     if( ctx.WatchRead )
@@ -974,8 +956,8 @@ bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd, int event )
     if( ctx.WatchWrite )
         evt.events = evt.events | EPOLLOUT;
     
-    fdctx.fd  = fd;
-    fdctx.idx = ctx.idx;
+    fdctx.ctx_idx  = ctx_idx;
+    fdctx.idx      = ctx.idx;
     memcpy( &evt.data, &fdctx, sizeof(fdctx) );
     
     if( evt.events )
@@ -994,36 +976,41 @@ bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd, int event )
     
     //delete fd from watch list
     if( !ctx.WatchRead && !ctx.WatchWrite )
-        fd_table_.erase( fd );
+    {
+        fd_map_.erase( fd );
+        ctx.flag = 0;
+        ctx_vec_[ctx_idx] = ctx;
+    }
     else
-        fd_table_[fd] = ctx;
+        ctx_vec_[ctx_idx] = ctx;
     
     return true;
 }
 
 bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd )
 {
-    
-#ifndef _WIN32
+    int ctx_idx;
+#ifdef __linux__
     struct epoll_event evt;
 #endif
 
-    auto it = fd_table_.find( fd );
+    auto it = fd_map_.find( fd );
     
-    if( it == fd_table_.end() )
+    if( it == fd_map_.end() )
         return false;
-
+    
+    ctx_idx = it->second;
 #ifdef LEV_CHECK_VALID_FD
 
-    if( !is_valid_fd( fd ) )
+    if( !IsValidFd( fd ) )
     {
-        fd_table_.erase( fd );
+        fd_map_.erase( fd );
         return false;
     }
         
 #endif
 
-#ifndef _WIN32
+#ifdef __linux__
     
     if( epoll_ctl( epoll_fd_, EPOLL_CTL_DEL, fd, &evt ) == -1 )
     {
@@ -1033,8 +1020,9 @@ bool LevEventLoopImpl::DeleteIoWatcher( lev_sock_t fd )
         
 #endif
 
-    fd_table_.erase( fd );
-            
+    fd_map_.erase( fd );
+    ctx_vec_[ctx_idx].flag = 0;
+    
     return true;
 }
 
@@ -1048,7 +1036,7 @@ bool LevEventLoopImpl::AddTimerWatcher( double start, double interval, LevTimerC
     if( cb == NULL )
         return false;
     
-    now = usec_now();
+    now = UsecNow();
     
     id = NewTimerID();
     ctx.TimerID  = id;
@@ -1250,7 +1238,7 @@ bool LevInitEnvironment()
 }
 
 
-int comp_timer( const void* data1, const void* data2 )
+int CompTimer( const void* data1, const void* data2 )
 {
     LevTimerCtx *ctx1, *ctx2;
     
@@ -1266,7 +1254,7 @@ void LevStopAllEventLoop()
     
 }
 
-uint64_t usec_now()
+uint64_t UsecNow()
 {
     uint64_t usec_epoch;
     
@@ -1292,7 +1280,7 @@ uint64_t usec_now()
 }
 
 
-void usec_sleep( uint64_t usec )
+void UsecSleep( uint64_t usec )
 {
     
 #ifdef _WIN32
@@ -1304,7 +1292,7 @@ void usec_sleep( uint64_t usec )
 }
 
 #ifdef LEV_CHECK_VALID_FD
-bool is_valid_fd( lev_sock_t fd )
+bool IsValidFd( lev_sock_t fd )
 {
 #ifdef _WIN32
     int type;
@@ -1356,7 +1344,7 @@ bool LevSetNonblocking( lev_sock_t fd )
 
 
 #ifdef _WIN32
-void usec2tmv( uint64_t usec, struct timeval &tmv )
+void Usec2Tmv( uint64_t usec, struct timeval &tmv )
 {
     
     tmv.tv_sec  = (int)(usec / 1000000);
@@ -1406,9 +1394,9 @@ void LevEventLoopImpl::CloseAll()
 {
     lev_sock_t fd;
     
-    while( fd_table_.size() )
+    while( fd_map_.size() )
     {
-        auto it = fd_table_.begin();
+        auto it = fd_map_.begin();
         
         fd = it->first;
         
