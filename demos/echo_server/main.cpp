@@ -24,6 +24,7 @@ int main( int argc, char* argv[] )
     }
     
     printf( "echo_server start ok!\n" );
+    WriteLog( "echo_server start ok!" );
     
     srv.Run();
     
