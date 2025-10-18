@@ -72,8 +72,11 @@ bool Server::Init( int port )
     
     signal( SIGINT,  SigProc );
     signal( SIGTERM, SigProc );
-    signal( SIGPIPE, SIG_IGN );
     
+#ifdef __linux__    
+    signal( SIGPIPE, SIG_IGN );
+#endif
+
     return true;
 }
 
