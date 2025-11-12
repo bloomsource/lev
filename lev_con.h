@@ -160,6 +160,8 @@ private:
 
 #ifdef LEV_CON_SSL
 
+//default ssl handshake timeout, this is usefull for protect hacking, 
+//(after connection established, doing nothing)
 #define LEV_SSL_INIT_TIMEOUT  3
 
 typedef enum{
@@ -174,7 +176,8 @@ public:
     
     //this called after tcp connection established and SSL_new ok, then begin to ssl handshake , after handshake ok, you can perform read/write
 	//the fd/ssl will be automaticly closed/free when destruct
-    LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd, LevSSLConnetionType type, LevNetEventNotifier* notifier, MemPool* pool = NULL );
+    LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd, LevSSLConnetionType type, LevNetEventNotifier* notifier, 
+    MemPool* pool = NULL, int ssl_init_timeout = LEV_SSL_INIT_TIMEOUT );
     
     virtual ~LevSSLConnection();
     

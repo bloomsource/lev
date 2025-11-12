@@ -49,9 +49,9 @@ public:
     //event loop stop, you can call this function on signal callback function
     virtual void Stop() = 0;
     
-    //set sleep time, this is max time (miliseoncds) system call will block
+    //set sleep time, this is max time (miliseconds) system call will block
     //this will only work on high latency mode
-    virtual void SetSleepTime( int miliseoncds ) = 0;
+    virtual void SetSleepTime( int miliseconds ) = 0;
     
     //add a socket fd to watch list, return true when success, return false when fail
     //note:

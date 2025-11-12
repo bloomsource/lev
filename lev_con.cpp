@@ -8,8 +8,8 @@
 #include <sys/socket.h>
 #endif
 
-static bool tcp_async_connect_ok( lev_sock_t fd );
-static bool tcp_err_nonblocking( int ret );
+static bool TcpAsyncConnectOk( lev_sock_t fd );
+static bool TcpErrNonblocking( int ret );
 
 LevNetConnection::LevNetConnection( LevEventLoop* loop, lev_sock_t fd, LevNetEventNotifier* notifier, MemPool* pool )
 : snd_buf_( false, pool )
@@ -166,7 +166,7 @@ void LevTcpConnection::ProcWriteEvent()
     }
     else
     {
-        if( !tcp_async_connect_ok( fd_ ) ) //async connect to remote failed
+        if( !TcpAsyncConnectOk( fd_ ) ) //async connect to remote failed
         {
             notify_->OnLevConConnectFail();
             return;
@@ -207,11 +207,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
     if( want_close_ )
         return true;
     
-    if( !connected_ )
-    {
-        return snd_buf_.Write( msg, msglen );
-    }
-    else
+    if( connected_ )
     {
         if( snd_buf_.Len() == 0 )
         {
@@ -223,7 +219,7 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
 
             if( rc <= 0 )
             {
-                if( tcp_err_nonblocking( rc ) )
+                if( TcpErrNonblocking( rc ) )
                 {
                     if( !snd_buf_.Write( msg, msglen ) )
                         return false;
@@ -252,6 +248,8 @@ bool LevTcpConnection::SendData( const void* msg, size_t msglen )
         }
         return true;
     }
+    else
+        return snd_buf_.Write( msg, msglen );
 }
 
 bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
@@ -271,7 +269,7 @@ bool LevTcpConnection::SendAndClose( const void* msg, size_t msglen )
     
 }
 
-bool tcp_async_connect_ok( lev_sock_t fd )
+bool TcpAsyncConnectOk( lev_sock_t fd )
 {
     int opt;
 #ifdef _WIN32
@@ -288,7 +286,7 @@ bool tcp_async_connect_ok( lev_sock_t fd )
     return true;
 }
 
-bool tcp_err_nonblocking( int ret )
+bool TcpErrNonblocking( int ret )
 {
 #ifdef _WIN32
     if( ret == SOCKET_ERROR && ( WSAGetLastError () ==  WSAEWOULDBLOCK ) )
@@ -333,7 +331,8 @@ void LevSSLInitTimeoutCB( LevEventLoop* loop, int timer_id,  void* data )
     con->ProcInitTimeout();
 }
 
-LevSSLConnection::LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd,  LevSSLConnetionType type, LevNetEventNotifier* notifier, MemPool* pool )
+LevSSLConnection::LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd,  LevSSLConnetionType type, LevNetEventNotifier* notifier, 
+MemPool* pool, int ssl_init_timeout )
 : LevNetConnection( loop, fd, notifier, pool )
 {
 
@@ -347,7 +346,8 @@ LevSSLConnection::LevSSLConnection( LevEventLoop* loop, SSL* ssl, lev_sock_t fd,
     
     loop_->AddIoWatcher( fd_, LEV_IO_EVENT_READ, LevSSLIoReadCB, this );
     
-    loop_->AddTimerWatcher( LEV_SSL_INIT_TIMEOUT, 0, LevSSLInitTimeoutCB, this, timer_id_ );
+    if( ssl_init_timeout > 0 )
+        loop_->AddTimerWatcher( ssl_init_timeout, 0, LevSSLInitTimeoutCB, this, timer_id_ );
 
     if( type == SSL_CLIENT )
         loop_->AddIoWatcher( fd_, LEV_IO_EVENT_WRITE, LevSSLIoWriteCB, this );
